@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { GitBranch, Users, Activity, ArrowRight, Telescope, Star, Zap, Shield, AlertCircle } from 'lucide-react'
+import { GitBranch, Users, Activity, ArrowRight, Telescope, Star, Zap, Shield, AlertCircle, CheckCircle2, WifiOff } from 'lucide-react'
 import { useRepo } from '../context/RepoContext.jsx'
+import { checkHealth } from '../api/repoApi.js'
 
 const loadingSteps = [
   'Connecting to repository...',
@@ -41,8 +42,21 @@ const stats = [
   { value: '10M+', label: 'Commits Analyzed', icon: GitBranch },
   { value: '50K+', label: 'Repositories', icon: Star },
   { value: '99.9%', label: 'Uptime', icon: Shield },
-  { value: '<1s', label: 'Analysis Time', icon: Zap },
+  { value: '<2min', label: 'Analysis Time', icon: Zap },
 ]
+
+/** Turn a raw fetch/backend error into a user-friendly message */
+function friendlyError(err) {
+  const msg = err?.message || ''
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('network')) {
+    return 'Cannot reach the backend server. Make sure the Flask server is running on port 5000. Run: .\\venv\\Scripts\\python.exe app.py'
+  }
+  if (msg.includes('Only GitHub')) return 'Only GitHub URLs are supported (e.g. https://github.com/owner/repo).'
+  if (msg.includes('Missing')) return 'Please enter a valid GitHub repository URL.'
+  if (msg.includes('HTTP 500')) return 'Analysis failed on the server — the repository may be private, empty, or too large to clone.'
+  if (msg.includes('Both mining methods')) return 'Both PyDriller and GitHub API failed. The repo may be private or invalid.'
+  return msg || 'Analysis failed. Please check the URL and try again.'
+}
 
 export default function Landing() {
   const navigate = useNavigate()
@@ -52,30 +66,55 @@ export default function Landing() {
   const [step, setStep] = useState(0)
   const [apiError, setApiError] = useState('')
 
+  // ── Backend health indicator ──────────────────────────────────────────
+  // null = checking, true = up, false = down
+  const [backendUp, setBackendUp] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    checkHealth()
+      .then((ok) => { if (!cancelled) setBackendUp(ok) })
+      .catch(() => { if (!cancelled) setBackendUp(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // ── Analysis handler ──────────────────────────────────────────────────
   const handleAnalyze = async (e) => {
     e.preventDefault()
     setApiError('')
-    if (!url.trim()) return
+    const trimmed = url.trim()
+    if (!trimmed) return
+
+    // Quick client-side URL check before hitting the server
+    if (!trimmed.includes('github.com')) {
+      setApiError('Only GitHub URLs are supported (e.g. https://github.com/owner/repo).')
+      return
+    }
 
     setLoading(true)
     setStep(0)
 
-    // Animate loading steps while the backend is mining the repo
+    // Animate loading steps while the backend mines the repo.
+    // Steps tick every ~4 s so even a 2-minute analysis stays animated.
     let tickCount = 0
     const ticker = setInterval(() => {
       tickCount += 1
-      setStep((prev) => prev + 1)
+      setStep((prev) => Math.min(prev + 1, loadingSteps.length))
       if (tickCount >= loadingSteps.length) clearInterval(ticker)
-    }, 600)
+    }, 4000)
 
     try {
-      await analyze(url.trim())
+      // ✅ analyze() now re-throws on error, so this catch block actually fires
+      await analyze(trimmed)
       clearInterval(ticker)
       navigate('/dashboard')
     } catch (err) {
       clearInterval(ticker)
       setLoading(false)
-      setApiError(err?.message || 'Analysis failed. Check the URL and try again.')
+      setStep(0)
+      setApiError(friendlyError(err))
+      // Re-check backend health so the indicator updates
+      checkHealth().then(setBackendUp).catch(() => setBackendUp(false))
     }
   }
 
@@ -141,19 +180,41 @@ export default function Landing() {
                   Turn Git history into a visual story of how your software evolved. Understand every commit, every author, every change.
                 </p>
 
+                {/* Backend status indicator */}
+                <div className="flex items-center justify-center gap-1.5 mt-5">
+                  {backendUp === null && (
+                    <span className="text-[11px] text-ink-soft/60 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-ink-soft/40 animate-pulse inline-block" />
+                      Checking server…
+                    </span>
+                  )}
+                  {backendUp === true && (
+                    <span className="text-[11px] text-teal-600 flex items-center gap-1">
+                      <CheckCircle2 size={11} strokeWidth={2.5} />
+                      Backend server ready
+                    </span>
+                  )}
+                  {backendUp === false && (
+                    <span className="text-[11px] text-coral-500 flex items-center gap-1">
+                      <WifiOff size={11} />
+                      Backend offline — start Flask server first
+                    </span>
+                  )}
+                </div>
+
                 {/* Input form */}
-                <form onSubmit={handleAnalyze} className="mt-8 flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
+                <form onSubmit={handleAnalyze} className="mt-6 flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
                   <input
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Paste GitHub repository URL..."
+                    placeholder="https://github.com/owner/repo"
                     className="flex-1 bg-card border border-line rounded-xl px-4 py-3.5 text-sm outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 transition-all placeholder:text-ink-soft/60 shadow-soft min-h-[48px]"
                   />
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     whileHover={{ scale: 1.01 }}
                     type="submit"
-                    disabled={!url.trim()}
+                    disabled={!url.trim() || backendUp === false}
                     className="flex items-center justify-center gap-2 bg-primary-500 text-white text-sm font-semibold px-6 py-3.5 rounded-xl hover:bg-primary-600 transition-colors whitespace-nowrap shadow-lift disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                   >
                     Analyze <ArrowRight size={15} />
@@ -161,19 +222,22 @@ export default function Landing() {
                 </form>
 
                 {/* Error banner */}
-                {apiError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl max-w-xl mx-auto"
-                  >
-                    <AlertCircle size={15} />
-                    {apiError}
-                  </motion.div>
-                )}
+                <AnimatePresence>
+                  {apiError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      className="mt-4 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl max-w-xl mx-auto text-left"
+                    >
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span>{apiError}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <p className="text-xs text-ink-soft/60 mt-3">
-                  Try it with any public GitHub repository
+                  Try: <button onClick={() => setUrl('https://github.com/pallets/flask')} className="underline hover:text-ink-soft transition-colors">github.com/pallets/flask</button>
                 </p>
 
                 {/* Stats */}
@@ -218,8 +282,10 @@ export default function Landing() {
                     <Telescope size={20} className="text-primary-500" strokeWidth={1.5} />
                   </div>
                 </div>
-                <h2 className="font-display text-xl text-ink mb-5">Analyzing your repository…</h2>
-                <p className="text-xs text-ink-soft mb-5">This may take a minute for large repos</p>
+                <h2 className="font-display text-xl text-ink mb-2">Analyzing your repository…</h2>
+                <p className="text-xs text-ink-soft mb-6">
+                  Mining commit history — this can take 1–3 minutes for large repos
+                </p>
                 <div className="flex flex-col gap-2.5 text-left w-full max-w-xs">
                   {loadingSteps.map((s, i) => (
                     <motion.p
@@ -237,6 +303,14 @@ export default function Landing() {
                     </motion.p>
                   ))}
                 </div>
+
+                {/* Cancel button */}
+                <button
+                  onClick={() => { setLoading(false); setStep(0) }}
+                  className="mt-8 text-[13px] text-ink-soft hover:text-ink underline transition-colors"
+                >
+                  Cancel
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
