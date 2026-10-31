@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #F7F8FC;
+  color: #1B1E2B;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #E0E1EC; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Typography utilities */
+.font-display { font-family: 'Newsreader', serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid #6E62C4;
+  outline-offset: 2px;
+}
+
+/* Responsive text sizes */
+@media (max-width: 640px) {
+  html { font-size: 15px; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Mobile touch targets - minimum 44px (WCAG 2.5.8) */
+@media (max-width: 768px) {
+  button, a {
+    min-height: 44px;
+  }
+}
+
+/* Prevent text overflow on mobile */
+@media (max-width: 640px) {
+  .truncate-mobile {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

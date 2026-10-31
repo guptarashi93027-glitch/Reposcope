@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Temporary repositories
+temp_repos/
+temp/
+tmp/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
